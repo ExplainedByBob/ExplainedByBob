@@ -1,0 +1,28 @@
+# ExplainedByBob Environment Variables
+# Copy this file to `.env` and fill in the values
+
+# =====================
+# X (Twitter) API
+# =====================
+
+TWITTER_API_KEY=
+TWITTER_API_SECRET=
+TWITTER_ACCESS_TOKEN=
+TWITTER_ACCESS_SECRET=
+
+# =====================
+# LLM Provider (OpenAI-compatible)
+# =====================
+
+LLM_API_URL=https://api.openai.com/v1/chat/completions
+LLM_API_KEY=
+
+# =====================
+# Bot Configuration
+# =====================
+
+# Optional: maximum replies per hour (not yet enforced)
+MAX_REPLIES_PER_HOUR=60
+
+# Optional: minimum seconds between replies
+REPLY_COOLDOWN_SECONDS=30
