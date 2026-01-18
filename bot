@@ -1,0 +1,137 @@
+/*
+ExplainedByBob v1
+Minimal X (Twitter) bot implementation
+
+Responsibilities:
+- Listen for mentions of @BobExplains_
+- Detect trigger phrase "Explain this Bob"
+- Extract question/context
+- Generate explanation via OpenAI-compatible API
+
+NOTE:
+- This is a reference implementation
+- Error handling and persistence are intentionally minimal
+*/
+
+import { TwitterApi } from 'twitter-api-v2';
+import fetch from 'node-fetch';
+
+// =====================
+// Configuration
+// =====================
+
+const TRIGGER_PHRASE = 'explain this bob';
+
+const twitterClient = new TwitterApi({
+  appKey: process.env.TWITTER_API_KEY,
+  appSecret: process.env.TWITTER_API_SECRET,
+  accessToken: process.env.TWITTER_ACCESS_TOKEN,
+  accessSecret: process.env.TWITTER_ACCESS_SECRET,
+});
+
+const rwClient = twitterClient.readWrite;
+
+// OpenAI-compatible endpoint
+const LLM_API_URL = process.env.LLM_API_URL;
+const LLM_API_KEY = process.env.LLM_API_KEY;
+
+// =====================
+// Prompt Template
+// =====================
+
+function buildPrompt(userText, contextText) {
+  return `You are ExplainedByBob, an automated explanation bot.
+
+Rules:
+- Be professional and neutral
+- Be concise and factual
+- Do not use humor, emojis, or slang
+- Do not give legal, medical, or financial advice
+
+Context:
+${contextText || 'No additional context.'}
+
+User request:
+${userText}
+
+Provide a clear explanation:`;
+}
+
+// =====================
+// LLM Call
+// =====================
+
+async function generateExplanation(prompt) {
+  const response = await fetch(LLM_API_URL, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${LLM_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'gpt-4.1-mini',
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 200,
+      temperature: 0.2,
+    }),
+  });
+
+  const data = await response.json();
+  return data.choices?.[0]?.message?.content?.trim();
+}
+
+// =====================
+// Mention Handler
+// =====================
+
+async function handleMention(tweet) {
+  const text = tweet.text.toLowerCase();
+
+  if (!text.includes(TRIGGER_PHRASE)) return;
+
+  const userQuery = tweet.text.split(/explain this bob/i)[1]?.trim();
+  if (!userQuery) return;
+
+  let contextText = '';
+
+  if (tweet.referenced_tweets?.length) {
+    try {
+      const parentId = tweet.referenced_tweets[0].id;
+      const parent = await rwClient.v2.singleTweet(parentId);
+      contextText = parent.data?.text || '';
+    } catch (e) {
+      contextText = '';
+    }
+  }
+
+  const prompt = buildPrompt(userQuery, contextText);
+  const explanation = await generateExplanation(prompt);
+
+  if (!explanation) return;
+
+  await rwClient.v2.reply(explanation, tweet.id);
+}
+
+// =====================
+// Stream Listener
+// =====================
+
+async function startStream() {
+  const stream = await rwClient.v2.searchStream({
+    'tweet.fields': ['referenced_tweets', 'author_id'],
+  });
+
+  for await (const { data } of stream) {
+    try {
+      await handleMention(data);
+    } catch (err) {
+      console.error('Error handling tweet:', err);
+    }
+  }
+}
+
+// =====================
+// Start Bot
+// =====================
+
+startStream().catch(console.error);
